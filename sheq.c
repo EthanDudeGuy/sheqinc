@@ -3,17 +3,13 @@
 #include <string.h>
 
 //what we have:
-//-Values 
-//-expression
-//-bindings
-//-env
-//^^^ these are structs an unions
-//
-//Next time:
-//-top env
-//-start on interp
-//
-//
+//data
+//interp
+//tests
+whats left:
+//more prims
+//parsing (oh gosh)
+
 //DEFINITIONS SO COMPILER ISNT MAD
 struct idC;
 struct numC;
