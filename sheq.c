@@ -73,7 +73,7 @@ struct arglist {
 //appc helper struct
 struct exprlist {
 	int len;
-	Expr *args;
+	Expr **args;
 };
 //end helper
 
@@ -175,7 +175,6 @@ val interp(Expr exp, Environment env) {
 			retval.u.numV->num = (float)(exp.u.numC->num);
 			return retval;
 		case EXPR_STRINGC:
-			printf("%s\n", exp.u.stringC->string);
 			retval = (val){
 				.tag = VAL_STRING,
 				.u.stringV = malloc(sizeof(struct stringV))
@@ -186,10 +185,8 @@ val interp(Expr exp, Environment env) {
 			val valboolfromcheck;
 			valboolfromcheck = interp(*(exp.u.ifC->test), env);
 			if (valboolfromcheck.tag == VAL_BOOLEAN) {
-				printf("%d\n", valboolfromcheck.u.boolV->b);
 				if (valboolfromcheck.u.boolV->b == 1) {
 					retval = interp(*(exp.u.ifC->trueval), env);
-					printf("%f\n", retval.u.numV->num);
 					return retval;
 				} else {
 					retval = interp(*(exp.u.ifC->falseval), env);
@@ -209,33 +206,43 @@ val interp(Expr exp, Environment env) {
 			retval.u.cloV->env = env;
 			return retval;
 		case EXPR_APPC:
-			//this is the function closure *(exp.u.function)
-			Environment new_env;
-			struct binding newbinding;
-			int currentenvlen = env.len;
-		        val func = interp(*(exp.u.appC->function), env);
+		{
+			val func = interp(*(exp.u.appC->function), env);
+
 			if (func.tag != VAL_CLOSURE) {
 				printf("SHEQ: application of nonfunction\n");
 				exit(1);
 			}
-			if (func.u.cloV->params.len != exp.u.appC->args.len) {
+
+			struct arglist params = func.u.cloV->params;
+			struct exprlist args = exp.u.appC->args;
+
+			if (params.len != args.len) {
 				printf("SHEQ: args and params len mismatch\n");
 				exit(1);
 			}
-			for (int i = 0; i < func.u.cloV->params.len; i++) {
-				newbinding = (binding){
-					.name = func.u.cloV->params.args[i],
-					.value = interp(exp.u.appC->args.args[i], env)
-				};
-				new_env = (Environment){
-					.len = currentenvlen + 1,
-					.bindings = realloc(env.bindings, sizeof(struct binding) * (currentenvlen + 1))
-				};
-				new_env.bindings[new_env.len] = newbinding;
-				currentenvlen = new_env.len;
+			   
+			Environment base = func.u.cloV->env;
+			int newlen = base.len + params.len;
+
+			Environment new_env;
+			new_env.len = newlen;
+			new_env.bindings = malloc(sizeof(binding) * newlen);
+
+			for (int i = 0; i < base.len; i++) {
+				new_env.bindings[i] = base.bindings[i];
+
+				for (int i = 0; i < params.len; i++) {
+					new_env.bindings[base.len + i] = (binding){
+						.name = params.args[i],
+						.value = interp(*(args.args[i]), env)
+					};
+				}
 			}
+
 			retval = interp(*(func.u.cloV->body), new_env);
 			return retval;
+		}
 		default:
 			printf("SHEQ: invalid AST\n");
 			exit(1);	
@@ -245,9 +252,10 @@ val interp(Expr exp, Environment env) {
 
 
 int main() {
-	//minimum top environment
+
+	//MINIMUM TOP ENVIRONMENT
 	Environment top_env;
-	val interpretval;
+	val interpretval; //vars for testing
 	val retfromenv;
 	
 	//instantiate env
@@ -273,63 +281,81 @@ int main() {
 		}
 	};
 	top_env.bindings[1].value.u.boolV->b = 0;
-	//minimum top environment
+	//ENVIRONMENT
 
-	/////////////////////////////////////////////////////////////
+	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 	//TESTS
-	/////////////////////////////////////////////////////////////
+	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 	//INTERP OF A NUM
-	//Expr examplenum = (Expr){
-	//			.tag = EXPR_NUMC,
-	//			.u.numC = malloc(sizeof(struct numC))
-	//			};
-	//examplenum.u.numC->num = (float)5;
-	//
-	//interpretval = interp(examplenum, top_env);
-
+	Expr examplenum = (Expr){
+				.tag = EXPR_NUMC,
+				.u.numC = malloc(sizeof(struct numC))
+				};
+	examplenum.u.numC->num = (float)5;
+	
+	interpretval = interp(examplenum, top_env);
+	if (interpretval.u.numV->num == 5) {
+		printf("number interpreted correctly\n");
+	} else {
+		printf("something else happened\n");
+		exit(1);
+	}
+	//NUM
 
 	//ENV LOOKUP
-	//retfromenv = lookup_in_env(top_env, "true");
-	//printf("%d\n", retfromenv.u.boolV->b);
-	
-	
-	
+	retfromenv = lookup_in_env(top_env, "true");
+	if (retfromenv.u.boolV->b == 1) {
+		printf("env lookup passed\n");
+	} else {
+		printf("env lookup passed\n");
+	}
+	//LOOKUP
+
 	//INTERP OF A STRING
-	//Expr examplestring = (Expr){
-	//			.tag = EXPR_STRINGC,
-	//			.u.stringC = malloc(sizeof(struct stringC))
-	//			};
-	//examplestring.u.stringC->string = "hello";
-	//
-	//interpretval = interp(examplestring, top_env);
-	//printf("%s\n", interpretval.u.stringV->string);
+	Expr examplestring = (Expr){
+				.tag = EXPR_STRINGC,
+				.u.stringC = malloc(sizeof(struct stringC))
+				};
+	examplestring.u.stringC->string = "hello";
 	
+	interpretval = interp(examplestring, top_env);
+	if (strcmp(interpretval.u.stringV->string, "hello") == 0) {
+		printf("string test passed\n");
+	} else {
+		printf("string test failed\n");
+	}
+	//STRING
 
 	//INTERP OF A VAR
-	//Expr examplevar = (Expr){
-	//			.tag = EXPR_IDC,
-	//			.u.idC = malloc(sizeof(struct idC))
-	//			};
-	//examplevar.u.idC->name = "true";
-	//
-	//interpretval = interp(examplevar, top_env);
-	//printf("%d\n", interpretval.u.boolV->b);
+	Expr examplevar = (Expr){
+				.tag = EXPR_IDC,
+				.u.idC = malloc(sizeof(struct idC))
+				};
+	examplevar.u.idC->name = "true";
+	
+	interpretval = interp(examplevar, top_env);
+	if (interpretval.u.boolV->b == 1) {
+		printf("idC test passed\n");
+	} else {
+		printf("idC test failed\n");
+	}
+	//VAR
 
 
 	//INTERP OF A CONDITIONAL
-	//Expr exampleif = (Expr){
-	//			.tag = EXPR_IFC,
-	//			.u.ifC = malloc(sizeof(struct ifC))
-	//			};
-	//
-	//Expr iftest = (Expr){
-	//			.tag = EXPR_IDC,
-	//			.u.idC = malloc(sizeof(struct idC))
-	//			};
-	//iftest.u.idC->name = "false";
-	//
-	Expr examplenum = (Expr){
+	Expr exampleif = (Expr){
+				.tag = EXPR_IFC,
+				.u.ifC = malloc(sizeof(struct ifC))
+				};
+	
+	Expr iftest = (Expr){
+				.tag = EXPR_IDC,
+				.u.idC = malloc(sizeof(struct idC))
+				};
+	iftest.u.idC->name = "false";
+	
+	Expr examplenumtrue = (Expr){
 				.tag = EXPR_NUMC,
 				.u.numC = malloc(sizeof(struct numC))
 				};
@@ -340,39 +366,57 @@ int main() {
 				.u.numC = malloc(sizeof(struct numC))
 				};
 	examplenumfalse.u.numC->num = (float)6;
-	//
-	//exampleif.u.ifC->test = &iftest;
-	//exampleif.u.ifC->trueval = &examplenum;
-	//exampleif.u.ifC->falseval = &examplenumfalse;
-	//
-	//interpretval = interp(exampleif, top_env);
-	//
-	//printf("%d\n", (interpretval.tag == VAL_NUMBER));
-	//printf("%f\n", interpretval.u.numV->num);
-	//
-	char *args[] = {"x", "y"};
-	struct arglist examplearglist = {
-		.len = 2,
-		.args = args
-	};
-	struct exprlist params = {
-		.len = 2,
-		.args = {&examplenum, &examplenumfalse}
-	};
 	
+	exampleif.u.ifC->test = &iftest;
+	exampleif.u.ifC->trueval = &examplenumtrue;
+	exampleif.u.ifC->falseval = &examplenumfalse;
 	
-	Expr examplelamb = (Expr){
-					.tag = EXPR_LAMBC,
-					.u.lambdaC = malloc(sizeof(struct lambdaC))
+	interpretval = interp(exampleif, top_env);
+	
+	if (interpretval.tag == VAL_NUMBER && interpretval.u.numV->num == (float)6) {
+		printf("conditional test passed\n");
+	} else {
+		printf("conditional test failed\n");
+	}
+	//CONDITIONAL
+
+	//APPLICATION OF A LAMBDA
+	//arg 1	
+	Expr argnum1 = (Expr){
+				.tag = EXPR_NUMC,
+				.u.numC = malloc(sizeof(struct numC))
 				};
+	argnum1.u.numC->num = (float)5;
+	//arg 2	
+	Expr argnum2 = (Expr){
+				.tag = EXPR_NUMC,
+				.u.numC = malloc(sizeof(struct numC))
+				};
+	argnum2.u.numC->num = (float)6;
+	
+	char *argsforlamb[] = {"x", "y"};
+	Expr *paramsforapp[] = { &argnum1, &argnum2 };
+
+	struct arglist examplearglist = {
+		    .len = 2,
+		        .args = argsforlamb
+	};
+
+	struct exprlist params = {
+		    .len = 2,
+		        .args = paramsforapp
+	};
+
+	Expr examplelamb = (Expr){
+	    .tag = EXPR_LAMBC,
+		.u.lambdaC = malloc(sizeof(struct lambdaC))
+	};
+
 	examplelamb.u.lambdaC->arglist = examplearglist;
-	examplelamb.u.lambdaC->body = &examplenumfalse;
-	
-	//interpretval = interp(examplelamb, top_env);
-	
-	//
-	//printf("%d\n", (interpretval.tag == VAL_CLOSURE));
-	//printf("%d\n", interpretval.u.cloV->params.len);
+	examplelamb.u.lambdaC->body = &argnum1;
+						   
+	interpretval = interp(examplelamb, top_env);
+
 	Expr exampleapp = (Expr){
 					.tag = EXPR_APPC,
 					.u.appC = malloc(sizeof(struct appC))
@@ -381,7 +425,10 @@ int main() {
 	exampleapp.u.appC->args = params;
 
 	interpretval = interp(exampleapp, top_env);
-
-
-
+	if (interpretval.u.numV->num == (float)5) {
+		printf("app of a lambda passed\n");
+	} else {
+		printf("app of a lambda failed\n");
+	}
+	//APPLICATION OF A LAMBDA
 }
